@@ -66,8 +66,6 @@ public class AutoBrushAccessibilityService extends AccessibilityService {
             status="进入源初秘境";tap(AutoConfig.SECRET_X,AutoConfig.SECRET_Y);phase=1;phaseAt=now;lastOcrAt=0;
         }else if(phase==1&&now-phaseAt>900){
             if(!ocrBusy&&now-lastOcrAt>700){lastOcrAt=now;status="正在OCR识别秘境列表，寻找‘地狱31’…";shotForOcr();}
-            // Do not click the old 31/33 boundary blindly. If OCR cannot see it,
-            // keep scanning instead of accidentally entering 33.
             if(now-phaseAt>12000&&!selected31){status="仍未识别到‘地狱31’，暂停点击，避免误选地狱33";phaseAt=now-7000;}
         }else if(phase==2&&now-phaseAt>1600){
             status="准备进入已识别的地狱31";tap(AutoConfig.ENTER_X,AutoConfig.ENTER_Y);phase=3;phaseAt=now;
@@ -103,7 +101,7 @@ public class AutoBrushAccessibilityService extends AccessibilityService {
                         if(!running||phase!=1)return;
                         Text.Line hit=find31(text);
                         if(hit!=null){
-                            Rect r=new Rect();hit.getBoundingBox().round(r);
+                            Rect r=hit.getBoundingBox();
                             int x=r.centerX(),y=r.centerY();
                             status="OCR确认‘地狱31’，点击实际文字位置";
                             tapRaw(x,y);selected31=true;phase=2;phaseAt=System.currentTimeMillis();
