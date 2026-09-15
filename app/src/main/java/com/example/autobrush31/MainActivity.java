@@ -36,8 +36,17 @@ public class MainActivity extends Activity {
         start.setOnClickListener(v->{
             AutoBrushAccessibilityService s=AutoBrushAccessibilityService.instance;
             if(s==null){ state.setText("❌ 无障碍服务没有连接，请先开启后返回本页面"); return; }
-            boolean ok=s.startBrush();
-            state.setText(ok ? "▶ 已启动：正在点击源初秘境…" : "❌ 启动失败："+AutoBrushAccessibilityService.status);
+            // Start the game first, then let the accessibility service operate on the game.
+            AutoConfigLauncher.launch(this);
+            state.setText("▶ 正在切换到游戏，2秒后开始操作…");
+            handler.postDelayed(()->{
+                AutoBrushAccessibilityService current=AutoBrushAccessibilityService.instance;
+                if(current!=null){
+                    boolean ok=current.startBrush();
+                    if(!ok) state.setText("❌ 启动失败："+AutoBrushAccessibilityService.status);
+                }
+                finish();
+            },2000);
         });
         root.addView(start,new LinearLayout.LayoutParams(-1,70));
 
@@ -49,7 +58,7 @@ public class MainActivity extends Activity {
         root.addView(stop,new LinearLayout.LayoutParams(-1,65));
 
         TextView help=new TextView(this);
-        help.setText("\n流程：源初秘境 → 地狱31 → 进入 → 小地图自动探索\n\n先开启无障碍，再打开游戏，最后点击开始。\n运行状态会自动刷新；首次建议只测试一局。");
+        help.setText("\n流程：开启无障碍 → 点击开始 → 自动切到游戏 → 源初秘境 → 地狱31 → 进入 → 自动探索\n\n这次开始按钮会自动切换到游戏，不需要停留在本程序页面。");
         help.setTextSize(15); root.addView(help);
         setContentView(root);
     }
