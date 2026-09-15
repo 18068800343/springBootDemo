@@ -5,7 +5,8 @@ public final class AutoConfig {
     public static final String GAME_PACKAGE = "com.hortor.mwdl.gf";
     public static final int REF_W = 691, REF_H = 1536;
     public static final int SECRET_X = 620, SECRET_Y = 1090;
-    public static final int HELL31_X = 335, HELL31_Y = 895;
+    // 31 与 33 垂直相邻，原 895 会落到 33；上移到 830，并由点击前后状态检查保护。
+    public static final int HELL31_X = 335, HELL31_Y = 830;
     public static final int ENTER_X = 345, ENTER_Y = 1270;
     public static final int JOY_X = 355, JOY_Y = 1125;
     public static final int MAP_L = 25, MAP_T = 105, MAP_R = 285, MAP_B = 270;
