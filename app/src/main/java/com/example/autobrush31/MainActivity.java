@@ -2,6 +2,7 @@ package com.example.autobrush31;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
 import android.provider.Settings;
@@ -13,9 +14,10 @@ public class MainActivity extends Activity {
     private TextView state;
     private final Handler handler=new Handler();
 
-    private LinearLayout.LayoutParams buttonParams(int height){
-        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,height);
-        p.setMargins(0,10,0,10);
+    private int dp(int v){ return Math.round(v*getResources().getDisplayMetrics().density); }
+    private LinearLayout.LayoutParams buttonParams(int heightDp){
+        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(heightDp));
+        p.setMargins(0,dp(7),0,dp(7));
         return p;
     }
 
@@ -23,52 +25,40 @@ public class MainActivity extends Activity {
         super.onCreate(b);
         ScrollView scroll=new ScrollView(this);
         scroll.setFillViewport(true);
+        scroll.setBackgroundColor(Color.rgb(245,245,245));
+
         LinearLayout root=new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(32,32,32,32);
+        root.setPadding(dp(22),dp(22),dp(22),dp(28));
         root.setGravity(Gravity.CENTER_HORIZONTAL);
+        root.setBackgroundColor(Color.rgb(245,245,245));
 
         TextView title=new TextView(this);
         title.setText("自动刷图31");
         title.setTextSize(28);
         title.setGravity(Gravity.CENTER);
         title.setIncludeFontPadding(true);
-        root.addView(title,new LinearLayout.LayoutParams(-1,80));
+        root.addView(title,new LinearLayout.LayoutParams(-1,dp(68)));
 
         state=new TextView(this);
         state.setText("检查无障碍服务…");
         state.setTextSize(16);
         state.setGravity(Gravity.CENTER);
         state.setIncludeFontPadding(true);
-        root.addView(state,new LinearLayout.LayoutParams(-1,65));
+        root.addView(state,new LinearLayout.LayoutParams(-1,dp(58)));
 
-        Button access=new Button(this);
-        access.setText("① 开启无障碍服务");
-        access.setTextSize(16);
-        access.setSingleLine(true);
-        access.setGravity(Gravity.CENTER);
-        root.addView(access,buttonParams(64));
+        Button access=new Button(this); access.setText("① 开启无障碍服务"); style(access,16); root.addView(access,buttonParams(52));
         access.setOnClickListener(v->startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
 
-        Button open=new Button(this);
-        open.setText("② 打开《迷雾大陆》");
-        open.setTextSize(16);
-        open.setSingleLine(true);
-        open.setGravity(Gravity.CENTER);
-        root.addView(open,buttonParams(64));
+        Button open=new Button(this); open.setText("② 打开《迷雾大陆》"); style(open,16); root.addView(open,buttonParams(52));
         open.setOnClickListener(v->AutoConfigLauncher.launch(this));
 
-        Button start=new Button(this);
-        start.setText("③ 开始自动刷图");
-        start.setTextSize(16);
-        start.setSingleLine(true);
-        start.setGravity(Gravity.CENTER);
-        root.addView(start,buttonParams(68));
+        Button start=new Button(this); start.setText("③ 开始自动刷图"); style(start,16); root.addView(start,buttonParams(56));
         start.setOnClickListener(v->{
             AutoBrushAccessibilityService s=AutoBrushAccessibilityService.instance;
             if(s==null){ state.setText("❌ 无障碍服务没有连接，请先开启后返回本页面"); return; }
             AutoConfigLauncher.launch(this);
-            state.setText("▶ 正在切换到游戏…");
+            state.setText("▶ 正在打开《迷雾大陆》…");
             handler.postDelayed(()->{
                 AutoBrushAccessibilityService current=AutoBrushAccessibilityService.instance;
                 if(current!=null){
@@ -76,31 +66,34 @@ public class MainActivity extends Activity {
                     if(!ok) state.setText("❌ 启动失败："+AutoBrushAccessibilityService.status);
                 }
                 finish();
-            },2000);
+            },1800);
         });
 
-        Button stop=new Button(this);
-        stop.setText("停止自动刷图");
-        stop.setTextSize(16);
-        stop.setSingleLine(true);
-        stop.setGravity(Gravity.CENTER);
-        root.addView(stop,buttonParams(64));
+        Button stop=new Button(this); stop.setText("停止自动刷图"); style(stop,16); root.addView(stop,buttonParams(52));
         stop.setOnClickListener(v->{
             if(AutoBrushAccessibilityService.instance!=null) AutoBrushAccessibilityService.instance.stopBrush();
             state.setText("已停止");
         });
 
         TextView help=new TextView(this);
-        help.setText("\n操作流程\n开启无障碍服务 → 开始自动刷图\n自动打开《迷雾大陆》→ 源初秘境 → 地狱31 → 进入秘境 → 自动探索\n\n提示：按钮之间留有间距，避免不同手机字体缩放时文字重叠。");
+        help.setText("操作流程\n开启无障碍服务 → 开始自动刷图\n自动打开《迷雾大陆》 → 源初秘境 → 地狱31 → 进入秘境 → 自动探索\n\n说明：程序会自动切换到游戏，并按屏幕比例点击；地狱31已重新校准点击位置。\n\n如果按钮文字仍显示不全，请在系统显示设置中将字体/显示大小恢复为默认。\n");
         help.setTextSize(15);
         help.setIncludeFontPadding(true);
         help.setGravity(Gravity.LEFT);
+        help.setTextColor(Color.DKGRAY);
         LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(-1,-2);
-        hp.setMargins(0,16,0,0);
+        hp.setMargins(0,dp(12),0,0);
         root.addView(help,hp);
 
         scroll.addView(root);
         setContentView(scroll);
+    }
+
+    private void style(Button b,float size){
+        b.setTextSize(size);
+        b.setSingleLine(true);
+        b.setGravity(Gravity.CENTER);
+        b.setIncludeFontPadding(true);
     }
 
     @Override protected void onResume(){ super.onResume(); refreshStatus(); }
