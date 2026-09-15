@@ -1,5 +1,6 @@
 name: Build APK
 
+# Trigger a fresh APK build after the latest source fixes.
 on:
   workflow_dispatch:
   push:
