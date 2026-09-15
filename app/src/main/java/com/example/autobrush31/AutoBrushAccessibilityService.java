@@ -8,7 +8,9 @@ import android.graphics.Path;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.DisplayMetrics;
 import android.util.Log;
+import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import java.util.concurrent.Executor;
 
@@ -52,7 +54,7 @@ public class AutoBrushAccessibilityService extends AccessibilityService {
         if(running) return true;
         if(Build.VERSION.SDK_INT < 30){ status="Android 11及以上才支持截图自动导航"; return false; }
         running=true; phase=0; moveCount=0; lastShotAt=0; phaseAt=System.currentTimeMillis();
-        status="自动刷图启动中";
+        status="自动刷图启动中（准备发送真实手势）";
         handler.post(loop);
         return true;
     }
@@ -64,18 +66,18 @@ public class AutoBrushAccessibilityService extends AccessibilityService {
         if(!running) return;
         long now=System.currentTimeMillis();
         if(phase==0){
-            status="点击：源初秘境";
-            tapScaled(SECRET_X,SECRET_Y);
+            status="正在点击源初秘境…";
+            tapScaled(SECRET_X,SECRET_Y,"源初秘境");
             phase=1; phaseAt=now;
-        } else if(phase==1 && now-phaseAt>1300){
-            status="点击：地狱31";
-            tapScaled(HELL31_X,HELL31_Y);
+        } else if(phase==1 && now-phaseAt>1600){
+            status="正在点击地狱31…";
+            tapScaled(HELL31_X,HELL31_Y,"地狱31");
             phase=2; phaseAt=now;
-        } else if(phase==2 && now-phaseAt>1200){
-            status="点击：进入秘境";
-            tapScaled(ENTER_X,ENTER_Y);
+        } else if(phase==2 && now-phaseAt>1600){
+            status="正在点击进入秘境…";
+            tapScaled(ENTER_X,ENTER_Y,"进入秘境");
             phase=3; phaseAt=now;
-        } else if(phase==3 && now-phaseAt>2200 && now-lastShotAt>800){
+        } else if(phase==3 && now-phaseAt>2500 && now-lastShotAt>1000){
             requestShot();
             lastShotAt=now;
         }
@@ -96,7 +98,7 @@ public class AutoBrushAccessibilityService extends AccessibilityService {
                             processFrame(copy);
                         }
                     } catch(Throwable e){
-                        status="截图处理失败";
+                        status="截图处理失败："+e.getClass().getSimpleName();
                         Log.e(TAG,"screenshot process",e);
                     } finally {
                         if(result.getHardwareBuffer()!=null) result.getHardwareBuffer().close();
@@ -126,40 +128,65 @@ public class AutoBrushAccessibilityService extends AccessibilityService {
             if(res.foundPlayer && res.confidence>=0.12f){
                 int dx=res.dx, dy=res.dy;
                 if(moveCount%7==6){ int tmp=dx; dx=dy; dy=-tmp; }
-                status="自动探索：方向 "+dx+","+dy;
+                status="自动探索：方向 "+dx+","+dy+"（截图"+sw+"x"+sh+")";
                 moveJoystick(dx,dy,650);
                 moveCount++;
             } else {
-                status="自动探索：寻找玩家位置";
+                status="自动探索：寻找玩家位置（截图"+sw+"x"+sh+")";
                 moveJoystick(moveCount%2==0?1:0,moveCount%2==0?0:1,500);
                 moveCount++;
             }
         } finally { full.recycle(); }
     }
 
-    private void tapScaled(int x,int y){
-        int w=getResources().getDisplayMetrics().widthPixels, h=getResources().getDisplayMetrics().heightPixels;
-        dispatchTap(scaleX(x,w),scaleY(y,h));
+    /** Use the physical display size. Resources display metrics can exclude system bars, which made Y coordinates wrong. */
+    private DisplayMetrics realMetrics(){
+        DisplayMetrics dm=new DisplayMetrics();
+        try {
+            WindowManager wm=(WindowManager)getSystemService(WINDOW_SERVICE);
+            if(wm!=null) wm.getDefaultDisplay().getRealMetrics(dm);
+        } catch(Throwable ignored) { }
+        if(dm.widthPixels<=0 || dm.heightPixels<=0) getResources().getDisplayMetrics().getClass();
+        return dm;
+    }
+
+    private int tapScaled(int x,int y,String name){
+        DisplayMetrics dm=realMetrics();
+        int tx=scaleX(x,dm.widthPixels), ty=scaleY(y,dm.heightPixels);
+        dispatchTap(tx,ty,name);
+        return 1;
     }
     private int scaleX(int x,int actualW){ return Math.round(x*actualW/(float)REF_W); }
     private int scaleY(int y,int actualH){ return Math.round(y*actualH/(float)REF_H); }
 
-    private void dispatchTap(int x,int y){
+    private void dispatchTap(int x,int y,String name){
         Path p=new Path(); p.moveTo(x,y);
-        GestureDescription.StrokeDescription s=new GestureDescription.StrokeDescription(p,0,80);
-        boolean ok=dispatchGesture(new GestureDescription.Builder().addStroke(s).build(),null,null);
-        if(!ok){ status="点击手势发送失败"; Log.e(TAG,status+" x="+x+" y="+y); }
+        GestureDescription.StrokeDescription s=new GestureDescription.StrokeDescription(p,0,120);
+        boolean ok=dispatchGesture(new GestureDescription.Builder().addStroke(s).build(),new GestureResultCallback(){
+            @Override public void onCompleted(GestureDescription gestureDescription){
+                status=name+"：手势已发送，坐标="+x+","+y;
+                Log.i(TAG,status);
+            }
+            @Override public void onCancelled(GestureDescription gestureDescription){
+                status=name+"：手势被系统取消，坐标="+x+","+y;
+                Log.e(TAG,status);
+            }
+        },null);
+        if(!ok){ status=name+"：dispatchGesture返回false，坐标="+x+","+y; Log.e(TAG,status); }
     }
 
     private void moveJoystick(int dx,int dy,long duration){
         float len=(float)Math.sqrt(dx*dx+dy*dy); if(len<0.1f) return;
-        int sx=scaleX(JOY_X,getResources().getDisplayMetrics().widthPixels);
-        int sy=scaleY(JOY_Y,getResources().getDisplayMetrics().heightPixels);
-        float radius=110f;
+        DisplayMetrics dm=realMetrics();
+        int sx=scaleX(JOY_X,dm.widthPixels);
+        int sy=scaleY(JOY_Y,dm.heightPixels);
+        float radius=110f*dm.widthPixels/REF_W;
         int ex=Math.round(sx+radius*dx/len), ey=Math.round(sy+radius*dy/len);
         Path p=new Path(); p.moveTo(sx,sy); p.lineTo(ex,ey);
         GestureDescription.StrokeDescription s=new GestureDescription.StrokeDescription(p,0,duration);
-        boolean ok=dispatchGesture(new GestureDescription.Builder().addStroke(s).build(),null,null);
+        boolean ok=dispatchGesture(new GestureDescription.Builder().addStroke(s).build(),new GestureResultCallback(){
+            @Override public void onCancelled(GestureDescription g){ Log.e(TAG,"摇杆手势被取消"); }
+        },null);
         if(!ok){ status="摇杆手势发送失败"; Log.e(TAG,status); }
     }
 }
