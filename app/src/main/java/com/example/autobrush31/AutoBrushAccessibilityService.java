@@ -9,184 +9,31 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.DisplayMetrics;
-import android.util.Log;
 import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import java.util.concurrent.Executor;
 
-/** No-root game assistant. Uses only Android Accessibility APIs and screenshots. */
 public class AutoBrushAccessibilityService extends AccessibilityService {
-    public static volatile AutoBrushAccessibilityService instance;
-    public static volatile String status = "服务未连接";
-    private static final String TAG = "AutoBrush31";
-    private final Handler handler = new Handler(Looper.getMainLooper());
-    private volatile boolean running;
-    private int phase;
-    private long phaseAt;
-    private int moveCount;
-    private long lastShotAt;
-
-    private static final int REF_W=691, REF_H=1536;
-    private static final int SECRET_X=620, SECRET_Y=1090;
-    private static final int HELL31_X=335, HELL31_Y=895;
-    private static final int ENTER_X=345, ENTER_Y=1270;
-    private static final int JOY_X=355, JOY_Y=1125;
-    private static final int MAP_L=25, MAP_T=105, MAP_R=285, MAP_B=270;
-
-    @Override public void onServiceConnected() {
-        super.onServiceConnected();
-        instance=this;
-        AccessibilityServiceInfo info=getServiceInfo();
-        if(info!=null){
-            info.flags |= AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS;
-            setServiceInfo(info);
-        }
-        status="无障碍已连接";
-        Log.i(TAG,status);
-    }
-
-    @Override public void onCreate(){ super.onCreate(); Log.i(TAG,"service created"); }
-    @Override public void onAccessibilityEvent(AccessibilityEvent event) { }
-    @Override public void onInterrupt(){ stopBrush(); }
-    @Override public void onDestroy(){ stopBrush(); if(instance==this) instance=null; status="服务已断开"; super.onDestroy(); }
-
-    public boolean startBrush(){
-        if(running) return true;
-        if(Build.VERSION.SDK_INT < 30){ status="Android 11及以上才支持截图自动导航"; return false; }
-        running=true; phase=0; moveCount=0; lastShotAt=0; phaseAt=System.currentTimeMillis();
-        status="自动刷图启动中（准备发送真实手势）";
-        handler.post(loop);
-        return true;
-    }
-
-    public void stopBrush(){ running=false; handler.removeCallbacksAndMessages(null); status="已停止"; }
-    public boolean isRunning(){ return running; }
-
-    private final Runnable loop = new Runnable(){ @Override public void run(){
-        if(!running) return;
-        long now=System.currentTimeMillis();
-        if(phase==0){
-            status="正在点击源初秘境…";
-            tapScaled(SECRET_X,SECRET_Y,"源初秘境");
-            phase=1; phaseAt=now;
-        } else if(phase==1 && now-phaseAt>1600){
-            status="正在点击地狱31…";
-            tapScaled(HELL31_X,HELL31_Y,"地狱31");
-            phase=2; phaseAt=now;
-        } else if(phase==2 && now-phaseAt>1600){
-            status="正在点击进入秘境…";
-            tapScaled(ENTER_X,ENTER_Y,"进入秘境");
-            phase=3; phaseAt=now;
-        } else if(phase==3 && now-phaseAt>2500 && now-lastShotAt>1000){
-            requestShot();
-            lastShotAt=now;
-        }
-        handler.postDelayed(this, phase==3 ? 500 : 250);
-    }};
-
-    private void requestShot(){
-        if(Build.VERSION.SDK_INT < 30) return;
-        try{
-            Executor ex = command -> handler.post(command);
-            takeScreenshot(0, ex, new TakeScreenshotCallback(){
-                @Override public void onSuccess(ScreenshotResult result){
-                    Bitmap b=null;
-                    try {
-                        b=Bitmap.wrapHardwareBuffer(result.getHardwareBuffer(), result.getColorSpace());
-                        if(b!=null){
-                            Bitmap copy=b.copy(Bitmap.Config.ARGB_8888,false);
-                            processFrame(copy);
-                        }
-                    } catch(Throwable e){
-                        status="截图处理失败："+e.getClass().getSimpleName();
-                        Log.e(TAG,"screenshot process",e);
-                    } finally {
-                        if(result.getHardwareBuffer()!=null) result.getHardwareBuffer().close();
-                    }
-                }
-                @Override public void onFailure(int errorCode){
-                    status="截图失败 code="+errorCode;
-                    Log.e(TAG,status);
-                }
-            });
-        }catch(Throwable e){
-            status="截图调用失败："+e.getClass().getSimpleName();
-            Log.e(TAG,"takeScreenshot",e);
-        }
-    }
-
-    private void processFrame(Bitmap full){
-        if(full==null || full.isRecycled()) return;
-        int sw=full.getWidth(), sh=full.getHeight();
-        try {
-            int l=scaleX(MAP_L,sw), t=scaleY(MAP_T,sh), r=scaleX(MAP_R,sw), b=scaleY(MAP_B,sh);
-            l=Math.max(0,Math.min(l,sw-1)); r=Math.max(l+1,Math.min(r,sw));
-            t=Math.max(0,Math.min(t,sh-1)); b=Math.max(t+1,Math.min(b,sh));
-            Bitmap map=Bitmap.createBitmap(full,l,t,r-l,b-t);
-            MapNavigator.Result res=MapNavigator.analyze(map);
-            map.recycle();
-            if(res.foundPlayer && res.confidence>=0.12f){
-                int dx=res.dx, dy=res.dy;
-                if(moveCount%7==6){ int tmp=dx; dx=dy; dy=-tmp; }
-                status="自动探索：方向 "+dx+","+dy+"（截图"+sw+"x"+sh+")";
-                moveJoystick(dx,dy,650);
-                moveCount++;
-            } else {
-                status="自动探索：寻找玩家位置（截图"+sw+"x"+sh+")";
-                moveJoystick(moveCount%2==0?1:0,moveCount%2==0?0:1,500);
-                moveCount++;
-            }
-        } finally { full.recycle(); }
-    }
-
-    /** Use the physical display size. Resources display metrics can exclude system bars, which made Y coordinates wrong. */
-    private DisplayMetrics realMetrics(){
-        DisplayMetrics dm=new DisplayMetrics();
-        try {
-            WindowManager wm=(WindowManager)getSystemService(WINDOW_SERVICE);
-            if(wm!=null) wm.getDefaultDisplay().getRealMetrics(dm);
-        } catch(Throwable ignored) { }
-        if(dm.widthPixels<=0 || dm.heightPixels<=0) getResources().getDisplayMetrics().getClass();
-        return dm;
-    }
-
-    private int tapScaled(int x,int y,String name){
-        DisplayMetrics dm=realMetrics();
-        int tx=scaleX(x,dm.widthPixels), ty=scaleY(y,dm.heightPixels);
-        dispatchTap(tx,ty,name);
-        return 1;
-    }
-    private int scaleX(int x,int actualW){ return Math.round(x*actualW/(float)REF_W); }
-    private int scaleY(int y,int actualH){ return Math.round(y*actualH/(float)REF_H); }
-
-    private void dispatchTap(int x,int y,String name){
-        Path p=new Path(); p.moveTo(x,y);
-        GestureDescription.StrokeDescription s=new GestureDescription.StrokeDescription(p,0,120);
-        boolean ok=dispatchGesture(new GestureDescription.Builder().addStroke(s).build(),new GestureResultCallback(){
-            @Override public void onCompleted(GestureDescription gestureDescription){
-                status=name+"：手势已发送，坐标="+x+","+y;
-                Log.i(TAG,status);
-            }
-            @Override public void onCancelled(GestureDescription gestureDescription){
-                status=name+"：手势被系统取消，坐标="+x+","+y;
-                Log.e(TAG,status);
-            }
-        },null);
-        if(!ok){ status=name+"：dispatchGesture返回false，坐标="+x+","+y; Log.e(TAG,status); }
-    }
-
-    private void moveJoystick(int dx,int dy,long duration){
-        float len=(float)Math.sqrt(dx*dx+dy*dy); if(len<0.1f) return;
-        DisplayMetrics dm=realMetrics();
-        int sx=scaleX(JOY_X,dm.widthPixels);
-        int sy=scaleY(JOY_Y,dm.heightPixels);
-        float radius=110f*dm.widthPixels/REF_W;
-        int ex=Math.round(sx+radius*dx/len), ey=Math.round(sy+radius*dy/len);
-        Path p=new Path(); p.moveTo(sx,sy); p.lineTo(ex,ey);
-        GestureDescription.StrokeDescription s=new GestureDescription.StrokeDescription(p,0,duration);
-        boolean ok=dispatchGesture(new GestureDescription.Builder().addStroke(s).build(),new GestureResultCallback(){
-            @Override public void onCancelled(GestureDescription g){ Log.e(TAG,"摇杆手势被取消"); }
-        },null);
-        if(!ok){ status="摇杆手势发送失败"; Log.e(TAG,status); }
-    }
+ public static volatile AutoBrushAccessibilityService instance;
+ public static volatile String status="服务未连接";
+ private final Handler handler=new Handler(Looper.getMainLooper());
+ private volatile boolean running;
+ private volatile String foregroundPackage="";
+ private int phase; private long phaseAt,lastShotAt;
+ private static final String GAME="com.hortor.mwdl.gf";
+ private static final int RW=691,RH=1536,SECRET_X=620,SECRET_Y=1090,HELL_X=335,HELL_Y=895,ENTER_X=345,ENTER_Y=1270,JOY_X=355,JOY_Y=1125,ML=25,MT=105,MR=285,MB=270;
+ @Override public void onServiceConnected(){super.onServiceConnected();instance=this;AccessibilityServiceInfo i=getServiceInfo();if(i!=null){i.flags|=AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS;setServiceInfo(i);}status="无障碍已连接";}
+ @Override public void onAccessibilityEvent(AccessibilityEvent e){if(e!=null&&e.getPackageName()!=null)foregroundPackage=e.getPackageName().toString();}
+ @Override public void onInterrupt(){stopBrush();}
+ @Override public void onDestroy(){stopBrush();if(instance==this)instance=null;super.onDestroy();}
+ public boolean startBrush(){if(running)return true;if(Build.VERSION.SDK_INT<30){status="Android 11及以上才支持截图";return false;}running=true;phase=0;lastShotAt=0;phaseAt=System.currentTimeMillis();status="等待迷雾大陆进入前台…";handler.post(loop);return true;}
+ public void stopBrush(){running=false;handler.removeCallbacksAndMessages(null);status="已停止";}
+ public boolean isRunning(){return running;}
+ private final Runnable loop=()->{if(!running)return;long now=System.currentTimeMillis();if(!GAME.equals(foregroundPackage)){status="等待迷雾大陆前台…";handler.postDelayed(loop,500);return;}if(phase==0){status="选择源初秘境";tap(SECRET_X,SECRET_Y);phase=1;phaseAt=now;}else if(phase==1&&now-phaseAt>1800){status="选择地狱31";tap(HELL_X,HELL_Y);phase=2;phaseAt=now;}else if(phase==2&&now-phaseAt>1800){status="进入地狱31";tap(ENTER_X,ENTER_Y);phase=3;phaseAt=now;}else if(phase==3&&now-phaseAt>2500&&now-lastShotAt>850){shot();lastShotAt=now;}handler.postDelayed(loop,phase==3?350:250);};
+ private void shot(){try{Executor ex=c->handler.post(c);takeScreenshot(0,ex,new TakeScreenshotCallback(){public void onSuccess(ScreenshotResult r){try{Bitmap b=Bitmap.wrapHardwareBuffer(r.getHardwareBuffer(),r.getColorSpace());if(b!=null){Bitmap c=b.copy(Bitmap.Config.ARGB_8888,false);frame(c);}}catch(Throwable t){status="截图处理失败";}finally{if(r.getHardwareBuffer()!=null)r.getHardwareBuffer().close();}}public void onFailure(int e){status="截图失败 "+e;}});}catch(Throwable t){status="截图调用失败";}}
+ private void frame(Bitmap f){if(f==null||f.isRecycled())return;int w=f.getWidth(),h=f.getHeight();try{int l=sx(ML,w),t=sy(MT,h),r=sx(MR,w),b=sy(MB,h);l=Math.max(0,Math.min(l,w-1));r=Math.max(l+1,Math.min(r,w));t=Math.max(0,Math.min(t,h-1));b=Math.max(t+1,Math.min(b,h));Bitmap m=Bitmap.createBitmap(f,l,t,r-l,b-t);MapNavigator.Result q=MapNavigator.analyze(m);m.recycle();if(!q.foundPlayer||q.confidence<0.12f){status="等待小地图识别玩家…";return;}status="小地图规划 "+q.dx+","+q.dy+" 路径"+q.pathLength;move(q.dx,q.dy,Math.max(450,Math.min(800,450+q.pathLength*30)));}finally{f.recycle();}}
+ private DisplayMetrics dm(){DisplayMetrics d=new DisplayMetrics();try{WindowManager w=(WindowManager)getSystemService(WINDOW_SERVICE);if(w!=null)w.getDefaultDisplay().getRealMetrics(d);}catch(Throwable e){}return d.widthPixels>0?d:getResources().getDisplayMetrics();}
+ private int sx(int x,int w){return Math.round(x*w/(float)RW);}private int sy(int y,int h){return Math.round(y*h/(float)RH);}
+ private void tap(int x,int y){DisplayMetrics d=dm();Path p=new Path();p.moveTo(sx(x,d.widthPixels),sy(y,d.heightPixels));dispatchGesture(new GestureDescription.Builder().addStroke(new GestureDescription.StrokeDescription(p,0,100)).build(),null,null);}
+ private void move(int x,int y,long ms){if(x==0&&y==0)return;DisplayMetrics d=dm();int a=sx(JOY_X,d.widthPixels),b=sy(JOY_Y,d.heightPixels);float z=(float)Math.sqrt(x*x+y*y),r=110f*d.widthPixels/RW;Path p=new Path();p.moveTo(a,b);p.lineTo(Math.round(a+r*x/z),Math.round(b+r*y/z));dispatchGesture(new GestureDescription.Builder().addStroke(new GestureDescription.StrokeDescription(p,0,ms)).build(),null,null);}
 }
