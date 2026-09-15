@@ -8,7 +8,10 @@ public final class AutoConfigLauncher {
     public static void launch(Context c) {
         try {
             Intent i = c.getPackageManager().getLaunchIntentForPackage(AutoConfig.GAME_PACKAGE);
-            if (i != null) { i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); c.startActivity(i); }
-        } catch (Exception ignored) {}
+            if (i != null) {
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+                c.startActivity(i);
+            }
+        } catch (Throwable ignored) {}
     }
 }
