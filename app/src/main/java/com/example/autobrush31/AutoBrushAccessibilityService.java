@@ -17,6 +17,8 @@ import com.google.mlkit.vision.common.InputImage;
 import com.google.mlkit.vision.text.TextRecognition;
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions;
 import com.google.mlkit.vision.text.Text;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Executor;
 
 public class AutoBrushAccessibilityService extends AccessibilityService {
@@ -66,8 +68,8 @@ public class AutoBrushAccessibilityService extends AccessibilityService {
             status="进入源初秘境";tap(AutoConfig.SECRET_X,AutoConfig.SECRET_Y);phase=1;phaseAt=now;lastOcrAt=0;
         }else if(phase==1&&now-phaseAt>900){
             if(!ocrBusy&&now-lastOcrAt>700){lastOcrAt=now;status="正在OCR识别秘境列表，寻找‘地狱31’…";shotForOcr();}
-            if(now-phaseAt>12000&&!selected31){status="仍未识别到‘地狱31’，暂停点击，避免误选地狱33";phaseAt=now-7000;}
-        }else if(phase==2&&now-phaseAt>1600){
+            if(now-phaseAt>15000&&!selected31){status="仍未识别到‘地狱31’，暂停点击，避免误选地狱33";phaseAt=now-10000;}
+        }else if(phase==2&&now-phaseAt>1800){
             status="准备进入已识别的地狱31";tap(AutoConfig.ENTER_X,AutoConfig.ENTER_Y);phase=3;phaseAt=now;
         }else if(phase==3&&now-phaseAt>2200&&now-lastShotAt>650){shot();lastShotAt=now;}
         handler.postDelayed(loop,phase==3?250:220);
@@ -99,12 +101,13 @@ public class AutoBrushAccessibilityService extends AccessibilityService {
                 .addOnSuccessListener(text->{
                     try{
                         if(!running||phase!=1)return;
-                        Text.Line hit=find31(text);
+                        Rect hit=find31Rect(text);
                         if(hit!=null){
-                            Rect r=hit.getBoundingBox();
-                            int x=r.centerX(),y=r.centerY();
+                            int x=hit.centerX(),y=hit.centerY();
                             status="OCR确认‘地狱31’，点击实际文字位置";
-                            tapRaw(x,y);selected31=true;phase=2;phaseAt=System.currentTimeMillis();
+                            // OCR坐标来自截图，必须按真实屏幕尺寸换算后再做手势。
+                            tapScreenshotPoint(x,y,b.getWidth(),b.getHeight());
+                            selected31=true;phase=2;phaseAt=System.currentTimeMillis();
                         }else status="OCR未发现‘地狱31’，继续扫描，不误选33";
                     }finally{ocrBusy=false;b.recycle();}
                 })
@@ -112,11 +115,45 @@ public class AutoBrushAccessibilityService extends AccessibilityService {
         }catch(Throwable t){ocrBusy=false;b.recycle();status="OCR初始化失败，继续扫描";}
     }
 
-    private Text.Line find31(Text text){
+    private String norm(String s){
+        if(s==null)return "";
+        // 去掉普通/全角空格、换行、标点和OCR常见的数字字母混淆。
+        return s.replaceAll("[\\s\\u00A0\\u3000]","")
+                .replace("：",":").replace("．",".").replace("。",".")
+                .replace("O","0").replace("o","0").replace("I","1").replace("l","1").replace("L","1");
+    }
+
+    private Rect find31Rect(Text text){
         if(text==null)return null;
-        for(Text.TextBlock block:text.getTextBlocks())for(Text.Line line:block.getLines()){
-            String s=line.getText().replace(" ","").replace("：",":");
-            if(s.contains("地狱31")||s.contains("地狱3l")||s.matches(".*地狱.*31.*"))return line;
+        List<Text.Line> lines=new ArrayList<>();
+        for(Text.TextBlock block:text.getTextBlocks())lines.addAll(block.getLines());
+
+        // 1) 同一行直接匹配，支持“地狱 31”“地狱　31”等各种空格。
+        for(Text.Line line:lines){
+            String s=norm(line.getText());
+            if(s.contains("地狱31")||s.matches(".*地狱.*31.*"))return new Rect(line.getBoundingBox());
+        }
+
+        // 2) OCR可能把“地狱”和“31”拆成两行/两个文本块，按相邻位置合并判断。
+        for(Text.Line a:lines){
+            String sa=norm(a.getText());
+            if(!sa.contains("地狱"))continue;
+            Rect ra=a.getBoundingBox();
+            if(ra==null)continue;
+            for(Text.Line c:lines){
+                if(c==a)continue;
+                String sc=norm(c.getText());
+                if(!sc.matches(".*31.*"))continue;
+                Rect rc=c.getBoundingBox();
+                if(rc==null)continue;
+                int gap=Math.max(0,Math.max(ra.top,rc.top)-Math.min(ra.bottom,rc.bottom));
+                int cy=Math.abs(ra.centerY()-rc.centerY());
+                int dx=Math.abs(ra.centerX()-rc.centerX());
+                // 同一列表行附近才认为是地狱31，避免误把其它31拼到地狱上。
+                if((gap<=90||cy<=100)&&dx<=500){
+                    return new Rect(Math.min(ra.left,rc.left),Math.min(ra.top,rc.top),Math.max(ra.right,rc.right),Math.max(ra.bottom,rc.bottom));
+                }
+            }
         }
         return null;
     }
@@ -149,10 +186,7 @@ public class AutoBrushAccessibilityService extends AccessibilityService {
                 if(dd<=1)stuckFrames++;else stuckFrames=Math.max(0,stuckFrames-2);
             }
             lastPlayerX=q.playerX;lastPlayerY=q.playerY;
-            if(stuckFrames>=3){
-                status="人物连续未移动，停止继续顶黑区，等待重新规划";
-                return;
-            }
+            if(stuckFrames>=3){status="人物连续未移动，停止继续顶黑区，等待重新规划";return;}
             if(!q.roadDirection){status="前方没有确认的灰色道路，保持原地，不进入黑色区域";return;}
             int dx=q.dx,dy=q.dy;
             if(dx==0&&dy==0)return;
@@ -171,6 +205,13 @@ public class AutoBrushAccessibilityService extends AccessibilityService {
     private int sy(int y,int h){return Math.round(y*h/(float)AutoConfig.REF_H);}
     private void tap(int x,int y){if(!isGameForeground())return;DisplayMetrics d=dm();tapRaw(sx(x,d.widthPixels),sy(y,d.heightPixels));}
     private void tapRaw(int x,int y){Path p=new Path();p.moveTo(x,y);dispatchGesture(new GestureDescription.Builder().addStroke(new GestureDescription.StrokeDescription(p,0,100)).build(),null,null);}
+    private void tapScreenshotPoint(int x,int y,int shotW,int shotH){
+        if(!isGameForeground())return;
+        DisplayMetrics d=dm();
+        int sx=Math.round(x*d.widthPixels/(float)Math.max(1,shotW));
+        int sy=Math.round(y*d.heightPixels/(float)Math.max(1,shotH));
+        tapRaw(sx,sy);
+    }
     private void move(int x,int y,long ms){
         if(!isGameForeground()||(x==0&&y==0))return;
         DisplayMetrics d=dm();int a=sx(AutoConfig.JOY_X,d.widthPixels),b=sy(AutoConfig.JOY_Y,d.heightPixels);
