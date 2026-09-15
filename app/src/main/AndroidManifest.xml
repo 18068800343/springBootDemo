@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Android 11+ package visibility: allow us to find and launch the installed game. -->
+    <queries>
+        <package android:name="com.hortor.mwdl.gf" />
+    </queries>
     <application android:allowBackup="false" android:label="@string/app_name" android:theme="@style/AppTheme">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
