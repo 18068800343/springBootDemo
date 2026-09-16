@@ -12,7 +12,8 @@ public final class MapNavigator {
         public int dx, dy, playerX, playerY, targetX, targetY, pathLength, routeCells;
         public float confidence;
     }
-    public static Result analyze(Bitmap src) {
+    public static Result analyze(Bitmap src) { return analyze(src, 0, 0); }
+    public static Result analyze(Bitmap src, int prevDx, int prevDy) {
         Result o=new Result(); if(src==null||src.isRecycled())return o;
         int w=src.getWidth(),h=src.getHeight(); if(w<30||h<30)return o;
         int[] p=findPlayer(src,w,h); if(p[0]<0)return o;
@@ -21,19 +22,28 @@ public final class MapNavigator {
         int bestDir=-1,bestScore=Integer.MIN_VALUE,bestLen=0;
         for(int i=0;i<dirs.length;i++){
             int dx=dirs[i][0],dy=dirs[i][1],grayRun=0,grayTotal=0,blackAfter=0,lastGray=0;
-            for(int d=10;d<=72;d+=3){
-                int cx=o.playerX+dx*d,cy=o.playerY+dy*d;float g=localGray(src,cx,cy,dx==0?6:5,dy==0?6:5);boolean dark=localDark(src,cx,cy,5);
-                if(g>=.28f){grayTotal++;grayRun++;lastGray=d;}else if(dark){if(grayRun>=2)blackAfter++;}else if(grayRun>=2)break;
+            for(int d=12;d<=78;d+=3){
+                int cx=o.playerX+dx*d,cy=o.playerY+dy*d;float g=localGray(src,cx,cy,dx==0?7:6,dy==0?7:6);boolean dark=localDark(src,cx,cy,5);
+                if(g>=.25f){grayTotal++;grayRun++;lastGray=d;}else if(dark){if(grayRun>=2)blackAfter++;}else if(grayRun>=2)break;
             }
             if(grayRun<2)continue;
             int score=grayRun*100+grayTotal*8+Math.min(blackAfter,5)*12+lastGray;
+            // Direction memory prevents the player from bouncing between the
+            // two sides of a road when the green marker hides the road edge.
+            // Reverse is allowed only when the previous corridor is genuinely gone.
+            if(prevDx!=0||prevDy!=0){
+                if(dx==-prevDx&&dy==-prevDy)score-=900;
+                else if(dx==prevDx&&dy==prevDy)score+=650;
+                else if(dx*prevDx+dy*prevDy>0)score+=220;
+            }
             if(score>bestScore){bestScore=score;bestDir=i;bestLen=lastGray;}
         }
         if(bestDir<0)return o;
-        int dx=dirs[bestDir][0],dy=dirs[bestDir][1];boolean firstRoad=false;
-        for(int d=9;d<=18&&!firstRoad;d+=3)firstRoad=localGray(src,o.playerX+dx*d,o.playerY+dy*d,6,6)>=.22f;
+        int dx=dirs[bestDir][0],dy=dirs[bestDir][1];
+        boolean firstRoad=false;
+        for(int d=10;d<=21&&!firstRoad;d+=3)firstRoad=localGray(src,o.playerX+dx*d,o.playerY+dy*d,7,7)>=.20f;
         if(!firstRoad)return o;
-        o.roadDirection=true;o.dx=dx;o.dy=dy;int len=Math.max(12,Math.min(35,bestLen));
+        o.roadDirection=true;o.dx=dx;o.dy=dy;int len=Math.max(14,Math.min(38,bestLen));
         o.targetX=o.playerX+dx*len;o.targetY=o.playerY+dy*len;o.pathLength=Math.max(1,bestLen/3);o.routeCells=Math.max(1,Math.min(12,bestLen/6));return o;
     }
     private static float localGray(Bitmap s,int cx,int cy,int rx,int ry){int w=s.getWidth(),h=s.getHeight(),good=0,n=0;for(int y=Math.max(0,cy-ry);y<=Math.min(h-1,cy+ry);y++)for(int x=Math.max(0,cx-rx);x<=Math.min(w-1,cx+rx);x++){int c=s.getPixel(x,y),r=Color.red(c),g=Color.green(c),b=Color.blue(c),lum=(299*r+587*g+114*b)/1000,ch=Math.max(r,Math.max(g,b))-Math.min(r,Math.min(g,b));if(lum>=42&&lum<185&&ch<=65)good++;n++;}return n==0?0f:good/(float)n;}
