@@ -55,15 +55,49 @@ public class AutoBrushAccessibilityService extends AccessibilityService {
     public boolean isRunning(){return running;}
 
     private boolean isGameForeground(){
+        // 1. 最快路径：最近一次无障碍事件就是游戏。
         if(GAME.equals(foregroundPackage))return true;
-        try{AccessibilityNodeInfo root=getRootInActiveWindow();if(root!=null){CharSequence p=root.getPackageName();if(p!=null){foregroundPackage=p.toString();return GAME.equals(foregroundPackage);}}}catch(Throwable ignored){}
+        // 2. 有些游戏进入前台后不再发送 TYPE_WINDOW_STATE_CHANGED，检查当前活动窗口。
+        try{
+            List<AccessibilityWindowInfoCompat> ignored=null;
+        }catch(Throwable ignored){}
+        try{
+            if(Build.VERSION.SDK_INT>=21){
+                List<android.view.accessibility.AccessibilityWindowInfo> ws=getWindows();
+                if(ws!=null){
+                    for(android.view.accessibility.AccessibilityWindowInfo win:ws){
+                        if(win==null)continue;
+                        AccessibilityNodeInfo root=win.getRoot();
+                        if(root!=null){
+                            CharSequence p=root.getPackageName();
+                            if(p!=null){
+                                String pkg=p.toString();
+                                if(GAME.equals(pkg)){foregroundPackage=pkg;return true;}
+                            }
+                        }
+                    }
+                }
+            }
+        }catch(Throwable ignored){}
+        // 3. 再检查当前活动窗口根节点。
+        try{
+            AccessibilityNodeInfo root=getRootInActiveWindow();
+            if(root!=null){
+                CharSequence p=root.getPackageName();
+                if(p!=null){foregroundPackage=p.toString();return GAME.equals(foregroundPackage);}
+            }
+        }catch(Throwable ignored){}
         return false;
     }
 
     private final Runnable loop=new Runnable(){@Override public void run(){
         if(!running)return;
         long now=System.currentTimeMillis();
-        if(!isGameForeground()){status="等待《迷雾大陆》进入前台…";handler.postDelayed(loop,500);return;}
+        if(!isGameForeground()){
+            status="等待《迷雾大陆》进入前台…";
+            handler.postDelayed(loop,500);
+            return;
+        }
         if(phase==0){
             status="进入源初秘境";tap(AutoConfig.SECRET_X,AutoConfig.SECRET_Y);phase=1;phaseAt=now;lastOcrAt=0;
         }else if(phase==1&&now-phaseAt>900){
@@ -105,7 +139,6 @@ public class AutoBrushAccessibilityService extends AccessibilityService {
                         if(hit!=null){
                             int x=hit.centerX(),y=hit.centerY();
                             status="OCR确认‘地狱31’，点击实际文字位置";
-                            // OCR坐标来自截图，必须按真实屏幕尺寸换算后再做手势。
                             tapScreenshotPoint(x,y,b.getWidth(),b.getHeight());
                             selected31=true;phase=2;phaseAt=System.currentTimeMillis();
                         }else status="OCR未发现‘地狱31’，继续扫描，不误选33";
@@ -117,7 +150,6 @@ public class AutoBrushAccessibilityService extends AccessibilityService {
 
     private String norm(String s){
         if(s==null)return "";
-        // 去掉普通/全角空格、换行、标点和OCR常见的数字字母混淆。
         return s.replaceAll("[\\s\\u00A0\\u3000]","")
                 .replace("：",":").replace("．",".").replace("。",".")
                 .replace("O","0").replace("o","0").replace("I","1").replace("l","1").replace("L","1");
@@ -127,14 +159,10 @@ public class AutoBrushAccessibilityService extends AccessibilityService {
         if(text==null)return null;
         List<Text.Line> lines=new ArrayList<>();
         for(Text.TextBlock block:text.getTextBlocks())lines.addAll(block.getLines());
-
-        // 1) 同一行直接匹配，支持“地狱 31”“地狱　31”等各种空格。
         for(Text.Line line:lines){
             String s=norm(line.getText());
             if(s.contains("地狱31")||s.matches(".*地狱.*31.*"))return new Rect(line.getBoundingBox());
         }
-
-        // 2) OCR可能把“地狱”和“31”拆成两行/两个文本块，按相邻位置合并判断。
         for(Text.Line a:lines){
             String sa=norm(a.getText());
             if(!sa.contains("地狱"))continue;
@@ -149,7 +177,6 @@ public class AutoBrushAccessibilityService extends AccessibilityService {
                 int gap=Math.max(0,Math.max(ra.top,rc.top)-Math.min(ra.bottom,rc.bottom));
                 int cy=Math.abs(ra.centerY()-rc.centerY());
                 int dx=Math.abs(ra.centerX()-rc.centerX());
-                // 同一列表行附近才认为是地狱31，避免误把其它31拼到地狱上。
                 if((gap<=90||cy<=100)&&dx<=500){
                     return new Rect(Math.min(ra.left,rc.left),Math.min(ra.top,rc.top),Math.max(ra.right,rc.right),Math.max(ra.bottom,rc.bottom));
                 }
