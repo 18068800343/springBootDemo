@@ -55,31 +55,23 @@ public class AutoBrushAccessibilityService extends AccessibilityService {
     public boolean isRunning(){return running;}
 
     private boolean isGameForeground(){
-        // 1. 最快路径：最近一次无障碍事件就是游戏。
         if(GAME.equals(foregroundPackage))return true;
-        // 2. 有些游戏进入前台后不再发送 TYPE_WINDOW_STATE_CHANGED，检查当前活动窗口。
         try{
-            List<AccessibilityWindowInfoCompat> ignored=null;
-        }catch(Throwable ignored){}
-        try{
-            if(Build.VERSION.SDK_INT>=21){
-                List<android.view.accessibility.AccessibilityWindowInfo> ws=getWindows();
-                if(ws!=null){
-                    for(android.view.accessibility.AccessibilityWindowInfo win:ws){
-                        if(win==null)continue;
-                        AccessibilityNodeInfo root=win.getRoot();
-                        if(root!=null){
-                            CharSequence p=root.getPackageName();
-                            if(p!=null){
-                                String pkg=p.toString();
-                                if(GAME.equals(pkg)){foregroundPackage=pkg;return true;}
-                            }
+            List<android.view.accessibility.AccessibilityWindowInfo> ws=getWindows();
+            if(ws!=null){
+                for(android.view.accessibility.AccessibilityWindowInfo win:ws){
+                    if(win==null)continue;
+                    AccessibilityNodeInfo root=win.getRoot();
+                    if(root!=null){
+                        CharSequence p=root.getPackageName();
+                        if(p!=null){
+                            String pkg=p.toString();
+                            if(GAME.equals(pkg)){foregroundPackage=pkg;return true;}
                         }
                     }
                 }
             }
         }catch(Throwable ignored){}
-        // 3. 再检查当前活动窗口根节点。
         try{
             AccessibilityNodeInfo root=getRootInActiveWindow();
             if(root!=null){
