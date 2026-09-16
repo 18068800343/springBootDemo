@@ -8,7 +8,8 @@ public final class AutoConfig {
     // 31 与 33 垂直相邻，原 895 会落到 33；上移到 830，并由点击前后状态检查保护。
     public static final int HELL31_X = 335, HELL31_Y = 830;
     public static final int ENTER_X = 345, ENTER_Y = 1270;
-    public static final int JOY_X = 355, JOY_Y = 1125;
+    // 游戏截图中移动区域位于左下方世界区域，原 355,1125 实际落在角色/地图中心附近。
+    public static final int JOY_X = 110, JOY_Y = 1125;
     public static final int MAP_L = 25, MAP_T = 105, MAP_R = 285, MAP_B = 270;
     public static final int PLAYER_G_MIN = 100, PLAYER_RG_DIFF = 35, PLAYER_BG_DIFF = 20;
     public static final int MAP_GRAY_MIN = 45, MAP_GRAY_MAX = 205, MAP_COLOR_DIFF_MAX = 35;
