@@ -46,15 +46,31 @@ public final class MapNavigator {
     private static int[] distanceToNonRoad(boolean[] road,int w,int h){int[] d=new int[road.length];Arrays.fill(d,999);ArrayDeque<Integer>q=new ArrayDeque<>();for(int y=0;y<h;y++)for(int x=0;x<w;x++){int id=y*w+x;if(!road[id]){d[id]=0;q.add(id);}}while(!q.isEmpty()){int p=q.removeFirst(),x=p%w,y=p/w;for(int k=0;k<4;k++){int nx=x+(k==0?1:k==1?-1:0),ny=y+(k==2?1:k==3?-1:0);if(!in(nx,ny,w,h))continue;int id=ny*w+nx;if(d[id]>d[p]+1){d[id]=d[p]+1;q.add(id);}}}return d;}
     private static void visit(int x,int y,int cur,int w,int h,boolean[] road,int[] prev,int[] dist,ArrayDeque<Integer>q){if(!in(x,y,w,h))return;int id=y*w+x;if(!road[id]||dist[id]>=0)return;dist[id]=dist[cur]+1;prev[id]=cur;q.addLast(id);}
 
-    // The minimap player is a green circular marker. Use tolerant color rules so
-    // screenshot color-space/display filtering does not make the marker disappear.
+    // The marker is visibly green on the supplied 691x1536 frame. Android
+    // screenshot color conversion can reduce saturation, so use a deliberately
+    // tolerant green-dominance test. The search is only performed on the
+    // minimap crop, which prevents normal game UI icons from being selected.
     private static int[] findPlayer(Bitmap s,int w,int h){
         boolean[] mask=new boolean[w*h],seen=new boolean[w*h];
-        for(int y=1;y<h-1;y++)for(int x=1;x<w-1;x++){int c=s.getPixel(x,y),r=Color.red(c),g=Color.green(c),b=Color.blue(c);mask[y*w+x]=g>=100&&g-r>=18&&g-b>=12&&g>=r*1.18f&&g>=b*1.10f;}
+        for(int y=1;y<h-1;y++)for(int x=1;x<w-1;x++){
+            int c=s.getPixel(x,y),r=Color.red(c),g=Color.green(c),b=Color.blue(c);
+            mask[y*w+x]=g>=80&&g>=r+8&&g>=b+4;
+        }
         int bx=-1,by=-1,bn=0,bs=-1;
-        for(int y=1;y<h-1;y++)for(int x=1;x<w-1;x++){int id=y*w+x;if(!mask[id]||seen[id])continue;ArrayDeque<Integer>q=new ArrayDeque<>();q.add(id);seen[id]=true;int n=0,sx=0,sy=0,minx=x,maxx=x,miny=y,maxy=y;
-            while(!q.isEmpty()){int p=q.removeFirst(),px=p%w,py=p/w;n++;sx+=px;sy+=py;minx=Math.min(minx,px);maxx=Math.max(maxx,px);miny=Math.min(miny,py);maxy=Math.max(maxy,py);for(int k=0;k<4;k++){int nx=px+(k==0?1:k==1?-1:0),ny=py+(k==2?1:k==3?-1:0);if(nx<1||nx>=w-1||ny<1||ny>=h-1)continue;int ni=ny*w+nx;if(mask[ni]&&!seen[ni]){seen[ni]=true;q.addLast(ni);}}}
-            int bw=maxx-minx+1,bh=maxy-miny+1,area=bw*bh;if(n<8||area>2500)continue;int score=n+(n*10>area*3?250:0)-Math.abs(bw-bh)*2;if(score>bs){bs=score;bn=n;bx=sx/n;by=sy/n;}}
+        for(int y=1;y<h-1;y++)for(int x=1;x<w-1;x++)if(mask[y*w+x]&&!seen[y*w+x]){
+            int seed=y*w+x;ArrayDeque<Integer>q=new ArrayDeque<>();q.add(seed);seen[seed]=true;
+            int n=0,sx=0,sy=0,minx=x,maxx=x,miny=y,maxy=y;
+            while(!q.isEmpty()){
+                int p=q.removeFirst(),px=p%w,py=p/w;n++;sx+=px;sy+=py;minx=Math.min(minx,px);maxx=Math.max(maxx,px);miny=Math.min(miny,py);maxy=Math.max(maxy,py);
+                for(int k=0;k<4;k++){int nx=px+(k==0?1:k==1?-1:0),ny=py+(k==2?1:k==3?-1:0);if(nx<1||nx>=w-1||ny<1||ny>=h-1)continue;int ni=ny*w+nx;if(mask[ni]&&!seen[ni]){seen[ni]=true;q.addLast(ni);}}
+            }
+            int bw=maxx-minx+1,bh=maxy-miny+1,area=bw*bh;
+            if(n<5||area>3600)continue;
+            float compact=n/(float)Math.max(1,area);
+            float roundPenalty=Math.abs(bw-bh);
+            float score=n*0.03f+compact*30f-roundPenalty*0.7f;
+            if(score>bs){bs=(int)score;bn=n;bx=sx/n;by=sy/n;}
+        }
         return new int[]{bx,by,bn};
     }
     private static boolean in(int x,int y,int w,int h){return x>=0&&x<w&&y>=0&&y<h;}
