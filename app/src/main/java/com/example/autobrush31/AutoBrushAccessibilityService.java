@@ -28,7 +28,7 @@ public class AutoBrushAccessibilityService extends AccessibilityService {
     private volatile String foregroundPackage="";
     private int phase;
     private long phaseAt,lastShotAt,lastOcrAt,lastMoveAt;
-    private int lastPlayerX=-1,lastPlayerY=-1,stuckFrames=0;
+    private int lastPlayerX=-1,lastPlayerY=-1,stuckFrames=0,lastMoveDx=0,lastMoveDy=0;
     private boolean ocrBusy=false,selected31=false;
     private static final String GAME=AutoConfig.GAME_PACKAGE;
 
@@ -38,7 +38,7 @@ public class AutoBrushAccessibilityService extends AccessibilityService {
     @Override public void onDestroy(){stopBrush();if(instance==this)instance=null;super.onDestroy();}
     public boolean startBrush(){
         if(running)return true;if(Build.VERSION.SDK_INT<30){status="Android 11及以上才支持截图";return false;}
-        running=true;phase=0;lastShotAt=0;lastOcrAt=0;lastMoveAt=0;lastPlayerX=-1;lastPlayerY=-1;stuckFrames=0;ocrBusy=false;selected31=false;
+        running=true;phase=0;lastShotAt=0;lastOcrAt=0;lastMoveAt=0;lastPlayerX=-1;lastPlayerY=-1;stuckFrames=0;lastMoveDx=0;lastMoveDy=0;ocrBusy=false;selected31=false;
         phaseAt=System.currentTimeMillis();status="正在确认《迷雾大陆》前台…";handler.post(loop);return true;
     }
     public void stopBrush(){running=false;handler.removeCallbacksAndMessages(null);status="已停止";}
@@ -67,17 +67,12 @@ public class AutoBrushAccessibilityService extends AccessibilityService {
     private String norm(String s){if(s==null)return "";return s.replaceAll("[\\s\\u00A0\\u3000]","").replace("O","0").replace("o","0").replace("I","1").replace("l","1").replace("L","1");}
     private android.graphics.Rect find31Rect(Text text){if(text==null)return null;List<Text.Line> lines=new ArrayList<>();for(Text.TextBlock b:text.getTextBlocks())lines.addAll(b.getLines());for(Text.Line line:lines){String s=norm(line.getText());if(s.contains("地狱31")||s.matches(".*地狱.*31.*"))return new android.graphics.Rect(line.getBoundingBox());}for(Text.Line a:lines){String sa=norm(a.getText());if(!sa.contains("地狱"))continue;android.graphics.Rect ra=a.getBoundingBox();if(ra==null)continue;for(Text.Line c:lines){if(c==a)continue;String sc=norm(c.getText());if(!sc.matches(".*31.*"))continue;android.graphics.Rect rc=c.getBoundingBox();if(rc==null)continue;int gap=Math.max(0,Math.max(ra.top,rc.top)-Math.min(ra.bottom,rc.bottom));int cy=Math.abs(ra.centerY()-rc.centerY());int dx=Math.abs(ra.centerX()-rc.centerX());if((gap<=90||cy<=100)&&dx<=500)return new android.graphics.Rect(Math.min(ra.left,rc.left),Math.min(ra.top,rc.top),Math.max(ra.right,rc.right),Math.max(ra.bottom,rc.bottom));}}return null;}
     private void shot(){try{Executor ex=c->handler.post(c);takeScreenshot(0,ex,new TakeScreenshotCallback(){public void onSuccess(ScreenshotResult r){try{Bitmap b=Bitmap.wrapHardwareBuffer(r.getHardwareBuffer(),r.getColorSpace());if(b!=null){Bitmap c=b.copy(Bitmap.Config.ARGB_8888,false);frame(c);}}catch(Throwable t){status="截图处理失败";}finally{if(r.getHardwareBuffer()!=null)r.getHardwareBuffer().close();}}public void onFailure(int e){status="截图失败 "+e;}});}catch(Throwable t){status="截图调用失败";}}
-    private void frame(Bitmap f){if(f==null||f.isRecycled())return;int w=f.getWidth(),h=f.getHeight();try{int l=sx(AutoConfig.MAP_L,w),t=sy(AutoConfig.MAP_T,h),r=sx(AutoConfig.MAP_R,w),b=sy(AutoConfig.MAP_B,h);l=Math.max(0,Math.min(l,w-1));r=Math.max(l+1,Math.min(r,w));t=Math.max(0,Math.min(t,h-1));b=Math.max(t+1,Math.min(b,h));Bitmap m=Bitmap.createBitmap(f,l,t,r-l,b-t);MapNavigator.Result q=MapNavigator.analyze(m);m.recycle();if(!q.foundPlayer||q.confidence<0.25f){status="正在用小地图定位人物…";return;}if(lastPlayerX>=0){int dd=Math.abs(q.playerX-lastPlayerX)+Math.abs(q.playerY-lastPlayerY);if(dd<=1)stuckFrames++;else stuckFrames=Math.max(0,stuckFrames-3);}lastPlayerX=q.playerX;lastPlayerY=q.playerY;
+    private void frame(Bitmap f){if(f==null||f.isRecycled())return;int w=f.getWidth(),h=f.getHeight();try{int l=sx(AutoConfig.MAP_L,w),t=sy(AutoConfig.MAP_T,h),r=sx(AutoConfig.MAP_R,w),b=sy(AutoConfig.MAP_B,h);l=Math.max(0,Math.min(l,w-1));r=Math.max(l+1,Math.min(r,w));t=Math.max(0,Math.min(t,h-1));b=Math.max(t+1,Math.min(b,h));Bitmap m=Bitmap.createBitmap(f,l,t,r-l,b-t);MapNavigator.Result q=MapNavigator.analyze(m,lastMoveDx,lastMoveDy);m.recycle();if(!q.foundPlayer||q.confidence<0.25f){status="正在用小地图定位人物…";return;}if(lastPlayerX>=0){int dd=Math.abs(q.playerX-lastPlayerX)+Math.abs(q.playerY-lastPlayerY);if(dd<=1)stuckFrames++;else stuckFrames=Math.max(0,stuckFrames-3);}lastPlayerX=q.playerX;lastPlayerY=q.playerY;
         if(!q.roadDirection){status="小地图未确认道路，继续观察，不进入黑色区域";return;}
         int dx=q.dx,dy=q.dy;if(dx==0&&dy==0)return;
-        // Do not stop after a few unchanged minimap frames. A short joystick
-        // stroke can be swallowed by combat/animation; simply reissue the same
-        // confirmed road direction. Only change direction after a new map frame.
-        long since=System.currentTimeMillis()-lastMoveAt;
-        long hold=650;
-        if(stuckFrames>=3)hold=850;
+        long since=System.currentTimeMillis()-lastMoveAt;long hold=stuckFrames>=3?850:700;
         status="小地图确认道路，移动方向："+(dx>0?"右":"")+(dx<0?"左":"")+(dy<0?"上":"")+(dy>0?"下":"")+"，连续走"+hold+"ms";
-        if(since>300) {move(dx,dy,hold);lastMoveAt=System.currentTimeMillis();}
+        if(since>350){move(dx,dy,hold);lastMoveAt=System.currentTimeMillis();lastMoveDx=dx;lastMoveDy=dy;}
     }finally{f.recycle();}}
     private DisplayMetrics dm(){DisplayMetrics d=new DisplayMetrics();try{WindowManager w=(WindowManager)getSystemService(WINDOW_SERVICE);if(w!=null)w.getDefaultDisplay().getRealMetrics(d);}catch(Throwable ignored){}return d.widthPixels>0?d:getResources().getDisplayMetrics();}
     private int sx(int x,int w){return Math.round(x*w/(float)AutoConfig.REF_W);}private int sy(int y,int h){return Math.round(y*h/(float)AutoConfig.REF_H);}
