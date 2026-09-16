@@ -50,10 +50,16 @@ public class MainActivity extends Activity {
         Button access=new Button(this); access.setText("① 开启无障碍服务"); style(access,16); root.addView(access,buttonParams(52));
         access.setOnClickListener(v->startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
 
-        Button open=new Button(this); open.setText("② 打开《迷雾大陆》"); style(open,16); root.addView(open,buttonParams(52));
+        Button overlay=new Button(this); overlay.setText("② 开启悬浮寻路调试"); style(overlay,16); root.addView(overlay,buttonParams(52));
+        overlay.setOnClickListener(v->{
+            try{startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION));}
+            catch(Throwable t){startActivity(new Intent(Settings.ACTION_SETTINGS));}
+        });
+
+        Button open=new Button(this); open.setText("③ 打开《迷雾大陆》"); style(open,16); root.addView(open,buttonParams(52));
         open.setOnClickListener(v->AutoConfigLauncher.launch(this));
 
-        Button start=new Button(this); start.setText("③ 开始自动刷图"); style(start,16); root.addView(start,buttonParams(56));
+        Button start=new Button(this); start.setText("④ 开始自动刷图"); style(start,16); root.addView(start,buttonParams(56));
         start.setOnClickListener(v->{
             AutoBrushAccessibilityService s=AutoBrushAccessibilityService.instance;
             if(s==null){ state.setText("❌ 无障碍服务没有连接，请先开启后返回本页面"); return; }
@@ -76,7 +82,7 @@ public class MainActivity extends Activity {
         });
 
         TextView help=new TextView(this);
-        help.setText("操作流程\n开启无障碍服务 → 开始自动刷图\n自动打开《迷雾大陆》 → 源初秘境 → 地狱31 → 进入秘境 → 自动探索\n\n说明：程序会自动切换到游戏，并按屏幕比例点击；地狱31已重新校准点击位置。\n\n如果按钮文字仍显示不全，请在系统显示设置中将字体/显示大小恢复为默认。\n");
+        help.setText("操作流程\n开启无障碍服务 → 开启悬浮寻路调试 → 开始自动刷图\n自动打开《迷雾大陆》 → 源初秘境 → 地狱31 → 进入秘境 → 自动探索\n\n悬浮窗会实时显示实际小地图、人物位置、目标点、当前移动方向和识别置信度；可拖动窗口。\n\n如果不需要调试，可不授权悬浮窗，自动刷图仍可运行。\n");
         help.setTextSize(15);
         help.setIncludeFontPadding(true);
         help.setGravity(Gravity.LEFT);
