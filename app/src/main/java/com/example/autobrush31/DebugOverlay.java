@@ -3,16 +3,14 @@ package com.example.autobrush31;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Paint;
-import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.Toast;
 
 /** Lightweight floating diagnostic panel for the minimap planner. */
 public final class DebugOverlay {
@@ -40,9 +38,9 @@ public final class DebugOverlay {
         lp.gravity=Gravity.TOP|Gravity.RIGHT; lp.x=dp(10); lp.y=dp(80);
         try{wm.addView(panel,lp);return true;}catch(Throwable t){panel=null;return false;}
     }
-    public static void hide(){if(panel!=null&&wm!=null){try{wm.removeView(panel);}catch(Throwable ignored){}}panel=null;map=null;service=null;}
+    public static void hide(){if(panel!=null&&wm!=null){try{wm.removeView(panel);}catch(Throwable ignored){}}panel=null;if(map!=null&&!map.isRecycled())map.recycle();map=null;service=null;}
     public static void update(Bitmap m, MapNavigator.Result r, String status){
-        if(m!=null){Bitmap c=m.copy(Bitmap.Config.ARGB_8888,false);Bitmap old=map;map=c;if(old!=null&&!old.isRecycled())old.recycle();}
+        if(m!=null&&!m.isRecycled()){Bitmap c=m.copy(Bitmap.Config.ARGB_8888,false);Bitmap old=map;map=c;if(old!=null&&!old.isRecycled())old.recycle();}
         if(r!=null){playerX=r.playerX;playerY=r.playerY;targetX=r.targetX;targetY=r.targetY;confidence=r.confidence;road=r.roadDirection;direction=dir(r.dx,r.dy);}
         detail=status==null?"":status;
         if(panel!=null)panel.postInvalidate();
@@ -55,11 +53,11 @@ public final class DebugOverlay {
         Panel(Context c){super(c);setLayerType(View.LAYER_TYPE_SOFTWARE,null);}
         protected void onDraw(Canvas c){super.onDraw(c);float d=getResources().getDisplayMetrics().density;
             p.setStyle(Paint.Style.FILL);p.setColor(0xEE171717);c.drawRoundRect(new RectF(0,0,getWidth(),getHeight()),18*d,18*d,p);
-            p.setColor(0xFFFFFFFF);p.setTextSize(20*d);p.setTypeface(Typeface.DEFAULT_BOLD);c.drawText("自动刷图31 · 寻路调试",16*d,28*d,p);
+            p.setColor(Color.WHITE);p.setTextSize(20*d);p.setTypeface(Typeface.DEFAULT_BOLD);c.drawText("自动刷图31 · 寻路调试",16*d,28*d,p);
             p.setTypeface(Typeface.DEFAULT);p.setTextSize(14*d);p.setColor(0xFFBDBDBD);c.drawText("实时小地图 / 路线判断",16*d,49*d,p);
             float l=14*d,t=60*d,r=getWidth()-14*d,b=245*d;p.setColor(0xFF050505);c.drawRoundRect(new RectF(l,t,r,b),10*d,10*d,p);
-            Bitmap m=map;if(m!=null&&!m.isRecycled()){c.drawBitmap(m,null,new RectF(l+5*d,t+5*d,r-5*d,b-5*d),p);}
-            if(playerX>=0&&map!=null&&!map.isRecycled()){float sx=(r-l-10*d)/map.getWidth(),sy=(b-t-10*d)/map.getHeight();float x=l+5*d+playerX*sx,y=t+5*d+playerY*sy;p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(3*d);p.setColor(0xFF00FF66);c.drawCircle(x,y,8*d,p);if(targetX>=0){float tx=l+5*d+targetX*sx,ty=t+5*d+targetY*sy;p.setColor(0xFFFFA000);c.drawLine(x,y,tx,ty,p);p.setStyle(Paint.Style.FILL);c.drawCircle(tx,ty,5*d,p);} }
+            Bitmap m=map;if(m!=null&&!m.isRecycled())c.drawBitmap(m,null,new RectF(l+5*d,t+5*d,r-5*d,b-5*d),p);
+            if(playerX>=0&&map!=null&&!map.isRecycled()){float sx=(r-l-10*d)/map.getWidth(),sy=(b-t-10*d)/map.getHeight();float x=l+5*d+playerX*sx,y=t+5*d+playerY*sy;p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(3*d);p.setColor(0xFF00FF66);c.drawCircle(x,y,8*d,p);if(targetX>=0){float tx=l+5*d+targetX*sx,ty=t+5*d+targetY*sy;p.setColor(0xFFFFA000);c.drawLine(x,y,tx,ty,p);p.setStyle(Paint.Style.FILL);c.drawCircle(tx,ty,5*d,p);}}
             p.setStyle(Paint.Style.FILL);p.setTextSize(19*d);p.setTypeface(Typeface.DEFAULT_BOLD);p.setColor(road?0xFF65E38A:0xFFFFC857);c.drawText("方向："+direction,16*d,275*d,p);
             p.setTypeface(Typeface.DEFAULT);p.setTextSize(13*d);p.setColor(0xFFE0E0E0);c.drawText(String.format(java.util.Locale.US,"置信度：%.0f%%   人物：( %d, %d )",confidence*100,playerX,playerY),16*d,297*d,p);
             p.setColor(0xFFAAAAAA);c.drawText(detail.length()>34?detail.substring(0,34):detail,16*d,318*d,p);
